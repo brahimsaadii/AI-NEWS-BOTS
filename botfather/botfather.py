@@ -5,6 +5,7 @@ Handles bot creation, configuration, and lifecycle management.
 
 import asyncio
 import logging
+import os
 import subprocess
 import sys
 from typing import Dict, List, Optional
@@ -378,8 +379,7 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
         # Show list of active bots to stop
         keyboard = []
         for bot_id, config in bots.items():
-            if config.get("active", False):
-                keyboard.append([InlineKeyboardButton(
+            if config.get("active", False):                keyboard.append([InlineKeyboardButton(
                     f"⏹️ {config['name']}", 
                     callback_data=f"stop_{bot_id}"
                 )])
@@ -407,6 +407,7 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             )])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await update.message.reply_text(
             "⚠️ **Warning:** This will permanently delete the bot and its configuration.\n\nSelect a bot to delete:",
             reply_markup=reply_markup,
@@ -419,17 +420,26 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             return  # Already running
         
         try:
-            # Start the bot subprocess
+            # Get the absolute path to the project directory
+            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            bot_script = os.path.join(project_dir, "bots", "news_bot.py")
+            
+            # Start the bot subprocess with proper working directory
             process = subprocess.Popen([
-                sys.executable, "-m", "bots.news_bot", bot_id
-            ], cwd=".")
+                sys.executable, bot_script, bot_id
+            ], cwd=project_dir, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            text=True)
             
             self.bot_processes[bot_id] = process
             self.config_manager.update_bot_status(bot_id, True)
-            logger.info(f"Started bot process for {config['name']} (ID: {bot_id})")
+            logger.info(f"Started bot process for {config['name']} (ID: {bot_id}) - PID: {process.pid}")
         
         except Exception as e:
             logger.error(f"Failed to start bot {bot_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
     
     async def _stop_bot_process(self, bot_id: str):
         """Stop a bot process."""

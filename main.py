@@ -6,6 +6,7 @@ Starts the BotFather controller bot.
 
 import asyncio
 import logging
+import os
 from botfather.botfather import BotFather
 
 # Configure logging
@@ -21,7 +22,9 @@ async def main():
     logger.info("Starting BotFather controller...")
     
     # Get BotFather token from environment or prompt user
-    botfather_token = input("Enter your BotFather Telegram bot token: ").strip()
+    botfather_token = os.getenv('BOTFATHER_TOKEN')
+    if not botfather_token:
+        botfather_token = input("Enter your BotFather Telegram bot token: ").strip()
     
     if not botfather_token:
         logger.error("BotFather token is required!")
