@@ -188,7 +188,8 @@ Let's get started with /addbot!
                 state["use_default_sources"] = False
                 state["step"] = "custom_sources"
                 await query.edit_message_text(
-                    "Please enter RSS feed URLs, one per line:\n\n"                    "Example:\n"
+                    "Please enter RSS feed URLs, one per line:\n\n"
+                    "Example:\n"
                     "https://feeds.feedburner.com/TechCrunch\n"
                     "https://www.theverge.com/rss/index.xml"
                 )
@@ -379,7 +380,8 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
         # Show list of active bots to stop
         keyboard = []
         for bot_id, config in bots.items():
-            if config.get("active", False):                keyboard.append([InlineKeyboardButton(
+            if config.get("active", False):
+                keyboard.append([InlineKeyboardButton(
                     f"⏹️ {config['name']}", 
                     callback_data=f"stop_{bot_id}"
                 )])
@@ -407,7 +409,6 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             )])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
         await update.message.reply_text(
             "⚠️ **Warning:** This will permanently delete the bot and its configuration.\n\nSelect a bot to delete:",
             reply_markup=reply_markup,
@@ -424,17 +425,26 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             bot_script = os.path.join(project_dir, "bots", "news_bot.py")
             
+            # Create logs directory if it doesn't exist
+            logs_dir = os.path.join(project_dir, "logs")
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            # Redirect stdout and stderr to log files to prevent pipe blocking
+            stdout_file = os.path.join(logs_dir, f"bot_{bot_id}_stdout.log")
+            stderr_file = os.path.join(logs_dir, f"bot_{bot_id}_stderr.log")
+            
             # Start the bot subprocess with proper working directory
-            process = subprocess.Popen([
-                sys.executable, bot_script, bot_id
-            ], cwd=project_dir, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE,
-            text=True)
+            with open(stdout_file, 'w') as stdout_f, open(stderr_file, 'w') as stderr_f:
+                process = subprocess.Popen([
+                    sys.executable, bot_script, bot_id
+                ], cwd=project_dir, 
+                stdout=stdout_f, 
+                stderr=stderr_f)
             
             self.bot_processes[bot_id] = process
             self.config_manager.update_bot_status(bot_id, True)
             logger.info(f"Started bot process for {config['name']} (ID: {bot_id}) - PID: {process.pid}")
+            logger.info(f"Bot logs: stdout={stdout_file}, stderr={stderr_file}")
         
         except Exception as e:
             logger.error(f"Failed to start bot {bot_id}: {e}")

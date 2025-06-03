@@ -31,14 +31,11 @@ class RSSFetcher:
         'ai': [
             'https://venturebeat.com/category/ai/feed/',
             'https://www.artificialintelligence-news.com/feed/',
-            'https://feeds.feedburner.com/oreilly/radar/ai',
             'https://syncedreview.com/feed/',
         ],
         'general': [
             'https://feeds.bbci.co.uk/news/rss.xml',
             'https://feeds.npr.org/1001/rss.xml',
-            'https://rss.cnn.com/rss/edition.rss',
-            'https://feeds.reuters.com/reuters/topNews',
         ]
     }
     
