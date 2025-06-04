@@ -129,8 +129,7 @@ Let's get started with /addbot!
                 [InlineKeyboardButton("💰 Cryptocurrency", callback_data="niche_crypto")],
                 [InlineKeyboardButton("🤖 Artificial Intelligence", callback_data="niche_ai")],
                 [InlineKeyboardButton("📰 General News", callback_data="niche_general")],
-                [InlineKeyboardButton("✏️ Custom Niche", callback_data="niche_custom")]
-            ]
+                [InlineKeyboardButton("✏️ Custom Niche", callback_data="niche_custom")]            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(
@@ -155,11 +154,62 @@ Let's get started with /addbot!
         await query.answer()
         
         user_id = query.from_user.id
+        data = query.data
+        
+        # Debug logging
+        logger.info(f"Button callback triggered: user_id={user_id}, data={data}")
+        
+        # Handle start/stop/delete buttons first (no user state required)
+        if data.startswith("start_"):
+            logger.info(f"Processing bot start command: {data}")
+            bot_id = data.replace("start_", "")
+            user_bots = self.config_manager.get_user_bots(query.from_user.id)
+            if bot_id in user_bots:
+                await query.edit_message_text(f"🚀 Starting bot: {user_bots[bot_id]['name']}...")
+                await self._start_bot_process(bot_id, user_bots[bot_id])
+                
+                # Check if bot actually started
+                if bot_id in self.bot_processes:
+                    await query.edit_message_text(f"✅ Successfully started bot: {user_bots[bot_id]['name']}")
+                else:
+                    await query.edit_message_text(f"❌ Failed to start bot: {user_bots[bot_id]['name']}. Check logs for details.")
+            else:
+                await query.edit_message_text("❌ Bot not found.")
+            return
+        
+        elif data.startswith("stop_"):
+            logger.info(f"Processing bot stop command: {data}")
+            bot_id = data.replace("stop_", "")
+            user_bots = self.config_manager.get_user_bots(query.from_user.id)
+            if bot_id in user_bots:
+                await self._stop_bot_process(bot_id)
+                await query.edit_message_text(f"⏹️ Stopped bot: {user_bots[bot_id]['name']}")
+            else:
+                await query.edit_message_text("❌ Bot not found.")
+            return
+        
+        elif data.startswith("delete_"):
+            logger.info(f"Processing bot delete command: {data}")
+            bot_id = data.replace("delete_", "")
+            user_bots = self.config_manager.get_user_bots(query.from_user.id)
+            if bot_id in user_bots:
+                # Stop the bot first if it's running
+                if bot_id in self.bot_processes:
+                    await self._stop_bot_process(bot_id)
+                
+                # Delete the configuration
+                self.config_manager.delete_bot(bot_id)
+                await query.edit_message_text(f"🗑️ Deleted bot: {user_bots[bot_id]['name']}")
+            else:
+                await query.edit_message_text("❌ Bot not found.")
+            return
+        
+        # For bot creation flow - check if user has state
         if user_id not in self.user_states:
+            logger.info(f"User {user_id} not in states, ignoring non-management callback")
             return
         
         state = self.user_states[user_id]
-        data = query.data
         
         if data.startswith("niche_"):
             niche = data.replace("niche_", "")
@@ -177,7 +227,6 @@ Let's get started with /addbot!
             state["frequency"] = int(frequency)
             state["step"] = "sources"
             await self._ask_sources(query)
-        
         elif data.startswith("sources_"):
             sources_type = data.replace("sources_", "")
             if sources_type == "default":
@@ -190,46 +239,13 @@ Let's get started with /addbot!
                 await query.edit_message_text(
                     "Please enter RSS feed URLs, one per line:\n\n"
                     "Example:\n"
-                    "https://feeds.feedburner.com/TechCrunch\n"
-                    "https://www.theverge.com/rss/index.xml"
+                    "https://feeds.feedburner.com/TechCrunch\n"                    "https://www.theverge.com/rss/index.xml"
                 )
         
         elif data.startswith("auto_"):
             auto_post = data == "auto_yes"
             state["auto_post"] = auto_post
             await self._finalize_bot_creation(query)
-        
-        elif data.startswith("start_"):
-            bot_id = data.replace("start_", "")
-            user_bots = self.config_manager.get_user_bots(query.from_user.id)
-            if bot_id in user_bots:
-                await self._start_bot_process(bot_id, user_bots[bot_id])
-                await query.edit_message_text(f"✅ Started bot: {user_bots[bot_id]['name']}")
-            else:
-                await query.edit_message_text("❌ Bot not found.")
-        
-        elif data.startswith("stop_"):
-            bot_id = data.replace("stop_", "")
-            user_bots = self.config_manager.get_user_bots(query.from_user.id)
-            if bot_id in user_bots:
-                await self._stop_bot_process(bot_id)
-                await query.edit_message_text(f"⏹️ Stopped bot: {user_bots[bot_id]['name']}")
-            else:
-                await query.edit_message_text("❌ Bot not found.")
-        
-        elif data.startswith("delete_"):
-            bot_id = data.replace("delete_", "")
-            user_bots = self.config_manager.get_user_bots(query.from_user.id)
-            if bot_id in user_bots:
-                # Stop the bot first if it's running
-                if bot_id in self.bot_processes:
-                    await self._stop_bot_process(bot_id)
-                
-                # Delete the configuration
-                self.config_manager.delete_bot(bot_id)
-                await query.edit_message_text(f"🗑️ Deleted bot: {user_bots[bot_id]['name']}")
-            else:
-                await query.edit_message_text("❌ Bot not found.")
     
     async def _ask_frequency(self, update_or_query):
         """Ask for update frequency."""
@@ -402,8 +418,7 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             return
         
         keyboard = []
-        for bot_id, config in bots.items():
-            keyboard.append([InlineKeyboardButton(
+        for bot_id, config in bots.items():        keyboard.append([InlineKeyboardButton(
                 f"🗑️ {config['name']}", 
                 callback_data=f"delete_{bot_id}"
             )])
@@ -418,6 +433,7 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
     async def _start_bot_process(self, bot_id: str, config: dict):
         """Start a bot process."""
         if bot_id in self.bot_processes:
+            logger.info(f"Bot {bot_id} is already running")
             return  # Already running
         
         try:
@@ -425,26 +441,64 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             bot_script = os.path.join(project_dir, "bots", "news_bot.py")
             
+            # Verify bot script exists
+            if not os.path.exists(bot_script):
+                logger.error(f"Bot script not found: {bot_script}")
+                return
+            
             # Create logs directory if it doesn't exist
             logs_dir = os.path.join(project_dir, "logs")
             os.makedirs(logs_dir, exist_ok=True)
             
-            # Redirect stdout and stderr to log files to prevent pipe blocking
+            # Prepare log files
             stdout_file = os.path.join(logs_dir, f"bot_{bot_id}_stdout.log")
             stderr_file = os.path.join(logs_dir, f"bot_{bot_id}_stderr.log")
             
-            # Start the bot subprocess with proper working directory
+            # Prepare environment variables for subprocess
+            env = os.environ.copy()
+            
+            # Start the bot subprocess with proper working directory and environment
             with open(stdout_file, 'w') as stdout_f, open(stderr_file, 'w') as stderr_f:
                 process = subprocess.Popen([
                     sys.executable, bot_script, bot_id
-                ], cwd=project_dir, 
+                ], 
+                cwd=project_dir,
+                env=env,
                 stdout=stdout_f, 
-                stderr=stderr_f)
+                stderr=stderr_f,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+                )
             
-            self.bot_processes[bot_id] = process
-            self.config_manager.update_bot_status(bot_id, True)
-            logger.info(f"Started bot process for {config['name']} (ID: {bot_id}) - PID: {process.pid}")
-            logger.info(f"Bot logs: stdout={stdout_file}, stderr={stderr_file}")
+            # Wait a moment and verify the process started successfully
+            await asyncio.sleep(2)
+            
+            if process.poll() is None:
+                # Process is still running - success!
+                self.bot_processes[bot_id] = process
+                self.config_manager.update_bot_status(bot_id, True)
+                logger.info(f"✅ Started bot process for {config['name']} (ID: {bot_id}) - PID: {process.pid}")
+                logger.info(f"Bot logs: stdout={stdout_file}, stderr={stderr_file}")
+            else:
+                # Process exited immediately - error
+                return_code = process.returncode
+                logger.error(f"❌ Bot process {bot_id} exited immediately with code {return_code}")
+                
+                # Read error logs
+                try:
+                    with open(stderr_file, 'r') as f:
+                        error_output = f.read()
+                    if error_output:
+                        logger.error(f"Bot {bot_id} stderr: {error_output}")
+                except:
+                    pass
+                    
+                try:
+                    with open(stdout_file, 'r') as f:
+                        stdout_output = f.read()
+                    if stdout_output:
+                        logger.error(f"Bot {bot_id} stdout: {stdout_output}")
+                except:
+                    pass
         
         except Exception as e:
             logger.error(f"Failed to start bot {bot_id}: {e}")
