@@ -34,11 +34,19 @@ class NewsBot:
         self.config = config
         self.token = config['token']
         self.application = Application.builder().token(self.token).build()
-        
-        # Initialize components
+          # Initialize components
         self.rss_fetcher = RSSFetcher(config['niche'], config.get('custom_sources', []))
         self.text_generator = TextGenerator()
-        self.x_poster = XPoster()
+        
+        # Initialize X poster with bot-specific credentials
+        x_creds = config.get('x_credentials', {})
+        self.x_poster = XPoster(
+            bearer_token=x_creds.get('bearer_token'),
+            api_key=x_creds.get('api_key'),
+            api_secret=x_creds.get('api_secret'),
+            access_token=x_creds.get('access_token'),
+            access_token_secret=x_creds.get('access_token_secret')
+        )
         
         # Setup scheduler
         self.scheduler = AsyncIOScheduler()

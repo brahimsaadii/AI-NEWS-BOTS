@@ -127,9 +127,9 @@ Let's get started with /addbot!
             keyboard = [
                 [InlineKeyboardButton("🔧 Technology", callback_data="niche_tech")],
                 [InlineKeyboardButton("💰 Cryptocurrency", callback_data="niche_crypto")],
-                [InlineKeyboardButton("🤖 Artificial Intelligence", callback_data="niche_ai")],
-                [InlineKeyboardButton("📰 General News", callback_data="niche_general")],
-                [InlineKeyboardButton("✏️ Custom Niche", callback_data="niche_custom")]            ]
+                [InlineKeyboardButton("🤖 Artificial Intelligence", callback_data="niche_ai")],                [InlineKeyboardButton("📰 General News", callback_data="niche_general")],
+                [InlineKeyboardButton("✏️ Custom Niche", callback_data="niche_custom")]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(
@@ -145,6 +145,40 @@ Let's get started with /addbot!
         
         elif state["step"] == "custom_sources":
             state["custom_sources"] = [url.strip() for url in text.split('\n') if url.strip()]
+            state["step"] = "x_credentials"
+            await self._ask_x_credentials(update)
+        
+        elif state["step"] == "x_bearer_token":
+            if text.lower() == "skip":
+                state["x_credentials"] = {}
+            else:
+                state["x_credentials"] = {"bearer_token": text.strip()}
+            state["step"] = "auto_post"
+            await self._ask_auto_post(update)
+        
+        elif state["step"] == "x_api_key":
+            state["x_credentials"] = state.get("x_credentials", {})
+            state["x_credentials"]["api_key"] = text.strip()
+            state["step"] = "x_api_secret"
+            await update.message.reply_text("Please enter your X API Secret:")
+        
+        elif state["step"] == "x_api_secret":
+            state["x_credentials"]["api_secret"] = text.strip()
+            state["step"] = "x_access_token"
+            await update.message.reply_text("Please enter your X Access Token:")
+        
+        elif state["step"] == "x_access_token":
+            state["x_credentials"]["access_token"] = text.strip()
+            state["step"] = "x_access_token_secret"
+            await update.message.reply_text("Please enter your X Access Token Secret:")
+        
+        elif state["step"] == "x_access_token_secret":
+            state["x_credentials"]["access_token_secret"] = text.strip()
+            state["step"] = "auto_post"
+            await self._ask_auto_post(update)
+        
+        elif state["step"] == "x_access_token_secret":
+            state["x_credentials"]["access_token_secret"] = text.strip()
             state["step"] = "auto_post"
             await self._ask_auto_post(update)
     
@@ -203,8 +237,7 @@ Let's get started with /addbot!
             else:
                 await query.edit_message_text("❌ Bot not found.")
             return
-        
-        # For bot creation flow - check if user has state
+          # For bot creation flow - check if user has state
         if user_id not in self.user_states:
             logger.info(f"User {user_id} not in states, ignoring non-management callback")
             return
@@ -227,20 +260,49 @@ Let's get started with /addbot!
             state["frequency"] = int(frequency)
             state["step"] = "sources"
             await self._ask_sources(query)
+        
         elif data.startswith("sources_"):
             sources_type = data.replace("sources_", "")
             if sources_type == "default":
                 state["use_default_sources"] = True
-                state["step"] = "auto_post"
-                await self._ask_auto_post(query)
+                state["step"] = "x_credentials"
+                await self._ask_x_credentials(query)
             else:
                 state["use_default_sources"] = False
                 state["step"] = "custom_sources"
                 await query.edit_message_text(
                     "Please enter RSS feed URLs, one per line:\n\n"
                     "Example:\n"
-                    "https://feeds.feedburner.com/TechCrunch\n"                    "https://www.theverge.com/rss/index.xml"
+                    "https://feeds.feedburner.com/TechCrunch\n"
+                    "https://www.theverge.com/rss/index.xml"
                 )
+        
+        elif data.startswith("x_"):
+            x_type = data.replace("x_", "")
+            if x_type == "bearer":
+                state["step"] = "x_bearer_token"
+                await query.edit_message_text(
+                    "🔑 **Enter your X Bearer Token**\n\n"
+                    "You can get this from the X Developer Portal:\n"
+                    "1. Go to developer.twitter.com\n"
+                    "2. Create an app or use existing one\n"
+                    "3. Go to Keys and Tokens\n"
+                    "4. Copy the Bearer Token\n\n"
+                    "Paste your Bearer Token here, or type 'skip' to simulate tweets:",
+                    parse_mode='Markdown'
+                )
+            elif x_type == "oauth":
+                state["step"] = "x_api_key"
+                await query.edit_message_text(
+                    "🔐 **OAuth Setup - Step 1 of 4**\n\n"
+                    "Please enter your X API Key:\n\n"
+                    "(You can get these credentials from developer.twitter.com → Your App → Keys and Tokens)",
+                    parse_mode='Markdown'
+                )
+            elif x_type == "skip":
+                state["x_credentials"] = {}
+                state["step"] = "auto_post"
+                await self._ask_auto_post(query)
         
         elif data.startswith("auto_"):
             auto_post = data == "auto_yes"
@@ -260,8 +322,7 @@ Let's get started with /addbot!
         
         text = "How often should the bot check for news?"
         
-        if hasattr(update_or_query, 'edit_message_text'):
-            await update_or_query.edit_message_text(text, reply_markup=reply_markup)
+        if hasattr(update_or_query, 'edit_message_text'):        await update_or_query.edit_message_text(text, reply_markup=reply_markup)
         else:
             await update_or_query.message.reply_text(text, reply_markup=reply_markup)
     
@@ -277,6 +338,30 @@ Let's get started with /addbot!
             "Would you like to use default news sources for your niche, or add custom RSS feeds?",
             reply_markup=reply_markup
         )
+    
+    async def _ask_x_credentials(self, update_or_query):
+        """Ask for X (Twitter) credentials."""
+        keyboard = [
+            [InlineKeyboardButton("Bearer Token only", callback_data="x_bearer")],
+            [InlineKeyboardButton("Full OAuth credentials", callback_data="x_oauth")],
+            [InlineKeyboardButton("Skip (simulate tweets)", callback_data="x_skip")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        text = """🐦 **X (Twitter) Account Setup**
+
+To post tweets, I need your X API credentials. Choose your authentication method:
+
+• **Bearer Token**: Simpler setup, good for basic posting
+• **OAuth Credentials**: Full API access (requires API key, secret, access tokens)
+• **Skip**: I'll simulate tweets (no actual posting)
+
+Which option would you prefer?"""
+        
+        if hasattr(update_or_query, 'edit_message_text'):
+            await update_or_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+        else:
+            await update_or_query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
     
     async def _ask_auto_post(self, update_or_query):
         """Ask about auto-posting preference."""
@@ -297,8 +382,7 @@ Let's get started with /addbot!
         """Finalize bot creation and save configuration."""
         user_id = query.from_user.id
         state = self.user_states[user_id]
-        
-        # Create bot configuration
+          # Create bot configuration
         bot_config = {
             "name": state["bot_name"],
             "token": state["bot_token"],
@@ -307,6 +391,7 @@ Let's get started with /addbot!
             "auto_post": state["auto_post"],
             "use_default_sources": state.get("use_default_sources", True),
             "custom_sources": state.get("custom_sources", []),
+            "x_credentials": state.get("x_credentials", {}),
             "owner_id": user_id,
             "active": False
         }
@@ -316,6 +401,14 @@ Let's get started with /addbot!
         
         # Clean up user state
         del self.user_states[user_id]
+          # Get X credentials status for display
+        x_creds = state.get("x_credentials", {})
+        if x_creds.get("bearer_token"):
+            x_status = "Bearer Token ✅"
+        elif x_creds.get("api_key"):
+            x_status = "OAuth Credentials ✅"
+        else:
+            x_status = "Simulation mode 🔄"
         
         success_text = f"""
 ✅ **Bot '{state['bot_name']}' created successfully!**
@@ -325,6 +418,7 @@ Let's get started with /addbot!
 • **Niche:** {state['niche'].title()}
 • **Update Frequency:** Every {state['frequency']} hour(s)
 • **Auto-post:** {'Yes ✅' if state['auto_post'] else 'No (Manual approval) 👤'}
+• **X Account:** {x_status}
 • **Bot ID:** {bot_id}
 
 Use /startbot to begin news fetching, or /listbots to see all your bots.
@@ -493,8 +587,7 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
                     pass
                     
                 try:
-                    with open(stdout_file, 'r') as f:
-                        stdout_output = f.read()
+                    with open(stdout_file, 'r') as f:                    stdout_output = f.read()
                     if stdout_output:
                         logger.error(f"Bot {bot_id} stdout: {stdout_output}")
                 except:
@@ -514,6 +607,50 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             self.config_manager.update_bot_status(bot_id, False)
             logger.info(f"Stopped bot process for ID: {bot_id}")
     
+    async def _auto_restart_active_bots(self):
+        """Auto-restart any bots that were marked as active when BotFather was last shut down."""
+        logger.info("Checking for active bots to auto-restart...")
+        
+        try:            # Get all active bots from configuration
+            active_bots = self.config_manager.get_active_bots()
+            
+            if not active_bots:
+                logger.info("No active bots found to restart")
+                return
+            
+            logger.info(f"Found {len(active_bots)} active bots to restart")
+            
+            # Restart each active bot
+            for bot_id, config in active_bots.items():
+                logger.info(f"Auto-restarting bot: {config['name']} (ID: {bot_id})")
+                await self._start_bot_process(bot_id, config)
+                
+                # Small delay between restarts to avoid overwhelming the system
+                await asyncio.sleep(2)
+            
+            logger.info(f"Auto-restart completed. {len(self.bot_processes)} bots are now running.")
+            
+        except Exception as e:
+            logger.error(f"Error during auto-restart: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    async def _stop_all_bot_processes(self):
+        """Stop all running bot processes during shutdown."""
+        logger.info("Stopping all bot processes...")
+        
+        # Create a copy of the keys to avoid runtime dictionary modification issues
+        bot_ids = list(self.bot_processes.keys())
+        
+        for bot_id in bot_ids:
+            try:
+                await self._stop_bot_process(bot_id)
+                await asyncio.sleep(0.5)  # Small delay between stops
+            except Exception as e:
+                logger.error(f"Error stopping bot {bot_id}: {e}")
+        
+        logger.info("All bot processes stopped")
+    
     async def start(self):
         """Start the BotFather application."""
         logger.info("Starting BotFather...")
@@ -521,12 +658,17 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
         await self.application.start()
         await self.application.updater.start_polling()
         
+        # Auto-restart any active bots after BotFather startup
+        await self._auto_restart_active_bots()
+        
         # Keep the application running
         try:
             await asyncio.Event().wait()
         except KeyboardInterrupt:
             logger.info("Received interrupt signal")
         finally:
+            # Stop all bot processes before shutting down
+            await self._stop_all_bot_processes()
             await self.application.updater.stop()
             await self.application.stop()
             await self.application.shutdown()
