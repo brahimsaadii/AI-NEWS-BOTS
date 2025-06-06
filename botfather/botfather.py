@@ -4,6 +4,7 @@ Handles bot creation, configuration, and lifecycle management.
 """
 
 import asyncio
+import json
 import logging
 import os
 import subprocess
@@ -37,22 +38,29 @@ class BotFather:
         self.application.add_handler(CommandHandler("deletebot", self.deletebot_command))
         self.application.add_handler(CommandHandler("startbot", self.startbot_command))
         self.application.add_handler(CommandHandler("stopbot", self.stopbot_command))
-        
-        # Callback query handler for inline buttons
+          # Callback query handler for inline buttons
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
         
         # Message handler for conversation states
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
-    
+        
+        # Document handler for Gmail credentials
+        self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_document))
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command."""
         welcome_text = """
 🤖 **Welcome to BotFather News Tweet Manager!**
 
-I help you create and manage Telegram bots that fetch news and suggest tweets for your X (Twitter) account.
+I help you create and manage specialized bots that generate tweet suggestions for your X (Twitter) account.
+
+**Available Bot Types:**
+📰 **RSS News Bot** - Monitors RSS feeds for news articles
+📧 **Gmail Agent Bot** - Monitors Gmail newsletters and digests  
+🌐 **Web Scraper Bot** - Scrapes websites for new content and articles
+💼 **Job Monitor Bot** - Coming soon!
 
 **Available Commands:**
-• /addbot - Create a new news bot
+• /addbot - Create a new specialized bot
 • /listbots - Show all your bots
 • /deletebot - Delete a bot
 • /startbot - Start a bot
@@ -62,18 +70,19 @@ I help you create and manage Telegram bots that fetch news and suggest tweets fo
 Let's get started with /addbot!
         """
         await update.message.reply_text(welcome_text, parse_mode='Markdown')
-    
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command."""
         help_text = """
 🔧 **BotFather Commands:**
 
-**/addbot** - Create a new news bot
-• I'll guide you through setting up a bot for a specific niche
+**/addbot** - Create a new specialized bot
+• Choose from RSS News Bot or Gmail Agent Bot
+• I'll guide you through the setup process
 • You'll need a Telegram bot token from @BotFather
 
 **/listbots** - Show all your configured bots
 • See which bots are running or stopped
+• View bot types and configurations
 
 **/deletebot** - Remove a bot permanently
 • Stops the bot and deletes its configuration
@@ -84,22 +93,44 @@ Let's get started with /addbot!
 **/stopbot** - Stop a running bot
 • Pause news fetching temporarily
 
-**Bot Features:**
+**Bot Types:**
+📰 **RSS News Bot** - Monitors RSS feeds for articles
 • Fetches news from RSS feeds
-• Generates tweet suggestions using AI
+• Configurable niches (Tech, Crypto, AI, etc.)
+• Custom RSS feed sources supported
+
+📧 **Gmail Agent Bot** - Monitors Gmail newsletters
+• Scans Gmail for newsletter emails
+• Extracts key content and articles
+• Configurable sender and keyword filters
+• Requires Gmail API credentials
+
+**Common Features:**
+• AI-powered tweet generation using OpenAI
 • Manual or automatic posting to X/Twitter
 • Configurable update frequency
-        """
+• Smart content filtering and deduplication        """
         await update.message.reply_text(help_text, parse_mode='Markdown')
     
     async def addbot_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Start the bot creation process."""
         user_id = update.effective_user.id
-        self.user_states[user_id] = {"step": "bot_name"}
+        self.user_states[user_id] = {"step": "bot_type"}
+        
+        # Show bot type selection buttons
+        keyboard = [
+            [InlineKeyboardButton("📰 RSS News Bot", callback_data="type_rss_news")],
+            [InlineKeyboardButton("📧 Gmail Agent Bot", callback_data="type_gmail_agent")],
+            [InlineKeyboardButton("🌐 Web Scraper Bot", callback_data="type_web_scraper")],
+            [InlineKeyboardButton("💼 Job Monitor Bot", callback_data="type_job_monitor")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
-            "🚀 Let's create your news bot!\n\n"
-            "First, what would you like to name your bot? (e.g., 'Tech News Bot', 'Crypto Updates')"
+            "🚀 **Let's create your bot!**\n\n"
+            "What type of bot would you like to create?",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
         )
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -116,27 +147,61 @@ Let's get started with /addbot!
             state["step"] = "bot_token"
             await update.message.reply_text(
                 f"Great! Your bot will be called '{text}'.\n\n"
-                "Now I need the Telegram bot token. Go to @BotFather on Telegram, create a new bot, and paste the token here:"
-            )
+                "Now I need the Telegram bot token. Go to @BotFather on Telegram, create a new bot, and paste the token here:"            )
         
         elif state["step"] == "bot_token":
-            state["bot_token"] = text
-            state["step"] = "niche"
-            
-            # Show niche selection buttons
-            keyboard = [
-                [InlineKeyboardButton("🔧 Technology", callback_data="niche_tech")],
-                [InlineKeyboardButton("💰 Cryptocurrency", callback_data="niche_crypto")],
-                [InlineKeyboardButton("🤖 Artificial Intelligence", callback_data="niche_ai")],                [InlineKeyboardButton("📰 General News", callback_data="niche_general")],
-                [InlineKeyboardButton("✏️ Custom Niche", callback_data="niche_custom")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                "Perfect! Token saved.\n\n"
-                "What news niche should this bot focus on?",
-                reply_markup=reply_markup
-            )
+            state["bot_token"] = text            # Handle different bot types
+            if state.get("bot_type") == "gmail_agent":
+                state["step"] = "gmail_setup"
+                await update.message.reply_text(
+                    "📧 **Gmail Agent Setup**\n\n"
+                    "To monitor Gmail newsletters, I need you to upload your Gmail API credentials file.\n\n"
+                    "Please follow the setup guide at: [Gmail Setup Instructions](GMAIL_SETUP.md)\n\n"
+                    "After setting up your credentials, please send me the `credentials.json` file.",
+                    parse_mode='Markdown'
+                )
+            elif state.get("bot_type") == "web_scraper":
+                state["step"] = "web_scraper_websites"
+                await update.message.reply_text(
+                    "🌐 **Web Scraper Setup**\n\n"
+                    "Please enter the websites you want to scrape (one per line).\n\n"
+                    "Examples:\n"
+                    "• https://techcrunch.com\n"
+                    "• https://arstechnica.com\n"
+                    "• https://www.theverge.com\n\n"
+                    "Enter at least one website URL:"
+                )
+            elif state.get("bot_type") == "job_monitor":
+                state["step"] = "job_monitor_queries"
+                await update.message.reply_text(
+                    "💼 **Job Monitor Setup**\n\n"
+                    "Please enter job search queries (one per line).\n\n"
+                    "Examples:\n"
+                    "• Software Developer\n"
+                    "• Data Scientist Python\n"
+                    "• Frontend Engineer React\n"
+                    "• Product Manager Remote\n\n"
+                    "Enter at least one search query:"
+                )
+            else:
+                # RSS News Bot flow
+                state["step"] = "niche"
+                
+                # Show niche selection buttons
+                keyboard = [
+                    [InlineKeyboardButton("🔧 Technology", callback_data="niche_tech")],
+                    [InlineKeyboardButton("💰 Cryptocurrency", callback_data="niche_crypto")],
+                    [InlineKeyboardButton("🤖 Artificial Intelligence", callback_data="niche_ai")],
+                    [InlineKeyboardButton("📰 General News", callback_data="niche_general")],
+                    [InlineKeyboardButton("✏️ Custom Niche", callback_data="niche_custom")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    "Perfect! Token saved.\n\n"
+                    "What news niche should this bot focus on?",
+                    reply_markup=reply_markup
+                )
         
         elif state["step"] == "custom_niche":
             state["niche"] = text
@@ -167,15 +232,91 @@ Let's get started with /addbot!
             state["step"] = "x_access_token"
             await update.message.reply_text("Please enter your X Access Token:")
         
-        elif state["step"] == "x_access_token":
-            state["x_credentials"]["access_token"] = text.strip()
-            state["step"] = "x_access_token_secret"
-            await update.message.reply_text("Please enter your X Access Token Secret:")
-        
         elif state["step"] == "x_access_token_secret":
             state["x_credentials"]["access_token_secret"] = text.strip()
             state["step"] = "auto_post"
             await self._ask_auto_post(update)
+          # Gmail-specific steps
+        elif state["step"] == "gmail_sender_filter":
+            state["gmail_sender_filter"] = text.strip()
+            state["step"] = "gmail_keyword_filter"
+            await update.message.reply_text(
+                "📌 **Keyword Filter (Optional)**\n\n"
+                "Enter keywords to filter newsletters (comma-separated).\n"
+                "Only emails containing these keywords will be processed.\n\n"
+                "Examples: 'newsletter, digest, weekly, news'\n"
+                "Or type 'skip' to process all newsletters:"
+            )
+        
+        elif state["step"] == "gmail_keyword_filter":
+            if text.lower() == "skip":
+                state["gmail_keyword_filter"] = ""
+            else:
+                state["gmail_keyword_filter"] = text.strip()
+            state["step"] = "frequency"
+            await self._ask_frequency(update)
+        
+        # Web Scraper-specific steps
+        elif state["step"] == "web_scraper_websites":
+            websites = [url.strip() for url in text.split('\n') if url.strip()]
+            if not websites:
+                await update.message.reply_text("❌ Please enter at least one valid website URL.")
+                return
+            
+            # Store websites with basic configuration
+            state["web_scraper_websites"] = []
+            for url in websites:
+                if not url.startswith(('http://', 'https://')):
+                    url = 'https://' + url
+                state["web_scraper_websites"].append({
+                    "url": url,
+                    "name": url.replace('https://', '').replace('http://', '').split('/')[0],                    "method": "html"
+                })
+            
+            state["step"] = "web_scraper_keywords"
+            await update.message.reply_text(
+                "🎯 **Keywords (Optional)**\n\n"
+                "Enter keywords to filter articles (comma-separated).\n"
+                "Only articles containing these keywords will be processed.\n\n"
+                "Examples: 'AI, technology, innovation, startup'\n"
+                "Or type 'skip' to process all articles:"
+            )
+        elif state["step"] == "web_scraper_keywords":
+            if text.lower() == "skip":
+                state["web_scraper_keywords"] = []
+            else:
+                state["web_scraper_keywords"] = [kw.strip() for kw in text.split(',') if kw.strip()]
+            state["step"] = "frequency"
+            await self._ask_frequency(update)
+        
+        # Job Monitor-specific steps
+        elif state["step"] == "job_monitor_queries":
+            queries = [query.strip() for query in text.split('\n') if query.strip()]
+            if not queries:
+                await update.message.reply_text("❌ Please enter at least one valid search query.")
+                return
+            
+            state["job_monitor_queries"] = queries
+            state["step"] = "job_monitor_location"
+            await update.message.reply_text(
+                "📍 **Location (Optional)**\n\n"
+                "Enter a location to filter jobs geographically.\n\n"
+                "Examples:\n"
+                "• New York, NY\n"
+                "• Remote\n"
+                "• San Francisco\n"
+                "• London, UK\n\n"
+                "Or type 'skip' for any location:"
+            )
+        
+        elif state["step"] == "job_monitor_location":
+            if text.lower() == "skip":
+                state["job_monitor_location"] = ""
+            else:
+                state["job_monitor_location"] = text.strip()
+            state["step"] = "frequency"
+            await self._ask_frequency(update)
+            await self._ask_frequency(update)
         
         elif state["step"] == "x_access_token_secret":
             state["x_credentials"]["access_token_secret"] = text.strip()
@@ -236,13 +377,32 @@ Let's get started with /addbot!
                 await query.edit_message_text(f"🗑️ Deleted bot: {user_bots[bot_id]['name']}")
             else:
                 await query.edit_message_text("❌ Bot not found.")
-            return
-          # For bot creation flow - check if user has state
+            return        # For bot creation flow - check if user has state
         if user_id not in self.user_states:
             logger.info(f"User {user_id} not in states, ignoring non-management callback")
             return
         
         state = self.user_states[user_id]
+        
+        # Handle bot type selection
+        if data.startswith("type_"):
+            bot_type = data.replace("type_", "")
+            state["bot_type"] = bot_type
+            state["step"] = "bot_name"
+            
+            type_names = {
+                "rss_news": "RSS News Bot",
+                "gmail_agent": "Gmail Agent Bot", 
+                "web_scraper": "Web Scraper Bot",
+                "job_monitor": "Job Monitor Bot"
+            }
+            
+            await query.edit_message_text(
+                f"Great! You've selected a **{type_names.get(bot_type, bot_type)}**.\n\n"
+                "What would you like to name your bot?",
+                parse_mode='Markdown'
+            )
+            return
         
         if data.startswith("niche_"):
             niche = data.replace("niche_", "")
@@ -377,31 +537,81 @@ Which option would you prefer?"""
             await update_or_query.edit_message_text(text, reply_markup=reply_markup)
         else:
             await update_or_query.message.reply_text(text, reply_markup=reply_markup)
-    
     async def _finalize_bot_creation(self, query):
         """Finalize bot creation and save configuration."""
         user_id = query.from_user.id
         state = self.user_states[user_id]
-          # Create bot configuration
+        
+        # Create base bot configuration
         bot_config = {
             "name": state["bot_name"],
             "token": state["bot_token"],
-            "niche": state["niche"],
+            "bot_type": state.get("bot_type", "rss_news"),
             "frequency": state["frequency"],
             "auto_post": state["auto_post"],
-            "use_default_sources": state.get("use_default_sources", True),
-            "custom_sources": state.get("custom_sources", []),
             "x_credentials": state.get("x_credentials", {}),
             "owner_id": user_id,
             "active": False
-        }
+        }        # Add type-specific configuration
+        if state.get("bot_type") == "gmail_agent":
+            # Save Gmail credentials to file
+            credentials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "credentials")
+            os.makedirs(credentials_dir, exist_ok=True)
+            
+            credentials_file = os.path.join(credentials_dir, f"gmail_credentials_{user_id}.json")
+            with open(credentials_file, 'w') as f:
+                json.dump(state["gmail_credentials"], f, indent=2)
+            
+            bot_config["gmail_config"] = {
+                "credentials_file": credentials_file,
+                "sender_filter": state.get("gmail_sender_filter", ""),
+                "keyword_filter": state.get("gmail_keyword_filter", "")
+            }
+        elif state.get("bot_type") == "web_scraper":
+            # Web Scraper configuration
+            bot_config["scraper_config"] = {
+                "websites": state.get("web_scraper_websites", []),
+                "keywords": state.get("web_scraper_keywords", []),
+                "content_filters": {
+                    "min_content_length": 100,
+                    "max_age_hours": 24
+                }
+            }
+        elif state.get("bot_type") == "job_monitor":
+            # Job Monitor configuration
+            search_queries = []
+            for query in state.get("job_monitor_queries", []):
+                search_queries.append({
+                    "query": query,
+                    "location": state.get("job_monitor_location", ""),
+                    "job_boards": ["indeed", "linkedin"],
+                    "filters": {}
+                })
+            
+            bot_config["job_config"] = {
+                "search_queries": search_queries,
+                "location": state.get("job_monitor_location", ""),
+                "job_boards": ["indeed", "linkedin"],
+                "filters": {
+                    "max_age_days": 7,
+                    "required_keywords": [],
+                    "exclude_keywords": []
+                }
+            }
+        else:
+            # RSS News Bot configuration
+            bot_config.update({
+                "niche": state.get("niche", "general"),
+                "use_default_sources": state.get("use_default_sources", True),
+                "custom_sources": state.get("custom_sources", [])
+            })
         
         # Save configuration
         bot_id = self.config_manager.add_bot(bot_config)
-        
-        # Clean up user state
+          # Clean up user state
         del self.user_states[user_id]
-          # Get X credentials status for display
+        
+        # Get X credentials status for display
         x_creds = state.get("x_credentials", {})
         if x_creds.get("bearer_token"):
             x_status = "Bearer Token ✅"
@@ -409,20 +619,91 @@ Which option would you prefer?"""
             x_status = "OAuth Credentials ✅"
         else:
             x_status = "Simulation mode 🔄"
+          # Create success message based on bot type
+        bot_type = state.get("bot_type", "rss_news")
         
-        success_text = f"""
-✅ **Bot '{state['bot_name']}' created successfully!**
+        if bot_type == "gmail_agent":
+            success_text = f"""
+✅ **Gmail Agent Bot '{state['bot_name']}' created successfully!**
 
 **Configuration:**
 • **Name:** {state['bot_name']}
-• **Niche:** {state['niche'].title()}
+• **Type:** Gmail Newsletter Monitor 📧
+• **Update Frequency:** Every {state['frequency']} hour(s)
+• **Auto-post:** {'Yes ✅' if state['auto_post'] else 'No (Manual approval) 👤'}
+• **X Account:** {x_status}
+• **Gmail Credentials:** Uploaded ✅
+• **Sender Filter:** {state.get('gmail_sender_filter', 'All senders') or 'All senders'}
+• **Keyword Filter:** {state.get('gmail_keyword_filter', 'No filter') or 'No filter'}
+• **Bot ID:** {bot_id}
+
+Your bot will monitor Gmail for newsletters and generate tweet suggestions!
+Use /startbot to begin monitoring, or /listbots to see all your bots.
+            """
+        elif bot_type == "web_scraper":
+            websites_list = ", ".join([w['name'] for w in state.get('web_scraper_websites', [])][:3])
+            if len(state.get('web_scraper_websites', [])) > 3:
+                websites_list += f" (+{len(state['web_scraper_websites']) - 3} more)"
+            
+            keywords_list = ", ".join(state.get('web_scraper_keywords', [])[:5])
+            if len(state.get('web_scraper_keywords', [])) > 5:
+                keywords_list += f" (+{len(state['web_scraper_keywords']) - 5} more)"
+            
+            success_text = f"""
+✅ **Web Scraper Bot '{state['bot_name']}' created successfully!**
+
+**Configuration:**
+• **Name:** {state['bot_name']}
+• **Type:** Web Content Scraper 🌐
+• **Update Frequency:** Every {state['frequency']} hour(s)
+• **Auto-post:** {'Yes ✅' if state['auto_post'] else 'No (Manual approval) 👤'}
+• **X Account:** {x_status}
+• **Websites:** {websites_list or 'None configured'}
+• **Keywords:** {keywords_list or 'No filter'}
+• **Bot ID:** {bot_id}
+
+Your bot will scrape websites for new content and generate tweet suggestions!
+Use /startbot to begin scraping, or /listbots to see all your bots.
+            """
+        elif bot_type == "job_monitor":
+            queries_list = ", ".join(state.get('job_monitor_queries', [])[:3])
+            if len(state.get('job_monitor_queries', [])) > 3:
+                queries_list += f" (+{len(state['job_monitor_queries']) - 3} more)"
+            
+            location_text = state.get('job_monitor_location', '') or 'Any location'
+            
+            success_text = f"""
+✅ **Job Monitor Bot '{state['bot_name']}' created successfully!**
+
+**Configuration:**
+• **Name:** {state['bot_name']}
+• **Type:** Job Board Monitor 💼
+• **Update Frequency:** Every {state['frequency']} hour(s)
+• **Auto-post:** {'Yes ✅' if state['auto_post'] else 'No (Manual approval) 👤'}
+• **X Account:** {x_status}
+• **Search Queries:** {queries_list}
+• **Location:** {location_text}
+• **Job Boards:** Indeed, LinkedIn
+• **Bot ID:** {bot_id}
+
+Your bot will monitor job boards for new postings and generate tweet suggestions!
+Use /startbot to begin job monitoring, or /listbots to see all your bots.
+            """
+        else:
+            success_text = f"""
+✅ **RSS News Bot '{state['bot_name']}' created successfully!**
+
+**Configuration:**
+• **Name:** {state['bot_name']}
+• **Type:** RSS News Monitor 📰
+• **Niche:** {state.get('niche', 'General').title()}
 • **Update Frequency:** Every {state['frequency']} hour(s)
 • **Auto-post:** {'Yes ✅' if state['auto_post'] else 'No (Manual approval) 👤'}
 • **X Account:** {x_status}
 • **Bot ID:** {bot_id}
 
 Use /startbot to begin news fetching, or /listbots to see all your bots.
-        """
+            """
         
         await query.edit_message_text(success_text, parse_mode='Markdown')
     
@@ -434,12 +715,29 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
         if not bots:
             await update.message.reply_text("You don't have any bots yet. Use /addbot to create one!")
             return
-        
-        bot_list = "🤖 **Your News Bots:**\n\n"
+        bot_list = "🤖 **Your Bots:**\n\n"
         for bot_id, config in bots.items():
             status = "🟢 Running" if config.get("active", False) else "🔴 Stopped"
-            bot_list += f"**{config['name']}** (ID: {bot_id})\n"
-            bot_list += f"• Niche: {config['niche'].title()}\n"
+            bot_type = config.get("bot_type", "rss_news")
+              # Get type-specific emoji and details
+            if bot_type == "gmail_agent":
+                type_emoji = "📧"
+                type_name = "Gmail Agent"
+                details = f"• Monitoring: Gmail newsletters"
+            elif bot_type == "web_scraper":
+                type_emoji = "🌐"
+                type_name = "Web Scraper"
+                scraper_config = config.get("scraper_config", {})
+                website_count = len(scraper_config.get("websites", []))
+                details = f"• Monitoring: {website_count} website(s)"
+            else:
+                type_emoji = "📰"
+                type_name = "RSS News"
+                details = f"• Niche: {config.get('niche', 'General').title()}"
+            
+            bot_list += f"{type_emoji} **{config['name']}** (ID: {bot_id})\n"
+            bot_list += f"• Type: {type_name}\n"
+            bot_list += f"{details}\n"
             bot_list += f"• Status: {status}\n"
             bot_list += f"• Frequency: Every {config['frequency']} hour(s)\n\n"
         
@@ -523,7 +821,6 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
-    
     async def _start_bot_process(self, bot_id: str, config: dict):
         """Start a bot process."""
         if bot_id in self.bot_processes:
@@ -533,7 +830,14 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
         try:
             # Get the absolute path to the project directory
             project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            bot_script = os.path.join(project_dir, "bots", "news_bot.py")
+              # Determine bot script based on bot type
+            bot_type = config.get("bot_type", "rss_news")
+            if bot_type == "gmail_agent":
+                bot_script = os.path.join(project_dir, "bots", "gmail_bot_runner.py")
+            elif bot_type == "web_scraper":
+                bot_script = os.path.join(project_dir, "bots", "web_scraper_bot_runner.py")
+            else:
+                bot_script = os.path.join(project_dir, "bots", "news_bot.py")
             
             # Verify bot script exists
             if not os.path.exists(bot_script):
@@ -672,3 +976,82 @@ Use /startbot to begin news fetching, or /listbots to see all your bots.
             await self.application.updater.stop()
             await self.application.stop()
             await self.application.shutdown()
+
+    async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle document uploads (Gmail credentials)."""
+        user_id = update.effective_user.id
+        if user_id not in self.user_states:
+            return
+        
+        state = self.user_states[user_id]
+        
+        if state["step"] == "gmail_setup":
+            document = update.message.document
+            
+            # Check if it's a JSON file
+            if not document.file_name.endswith('.json'):
+                await update.message.reply_text(
+                    "❌ Please upload a JSON file (credentials.json) from Google Cloud Console."
+                )
+                return
+            
+            try:
+                # Download the file
+                file = await context.bot.get_file(document.file_id)
+                credentials_content = await file.download_as_bytearray()
+                  # Validate JSON format
+                credentials_data = json.loads(credentials_content.decode('utf-8'))
+                
+                # Check if it's a valid Google credentials file
+                # Support both installed app and web app credential formats
+                valid_credential = False
+                if 'installed' in credentials_data:
+                    # Desktop app credentials (most common)
+                    installed = credentials_data['installed']
+                    if 'client_id' in installed and 'client_secret' in installed:
+                        valid_credential = True
+                elif 'web' in credentials_data:
+                    # Web app credentials
+                    web = credentials_data['web']
+                    if 'client_id' in web and 'client_secret' in web:
+                        valid_credential = True
+                elif 'client_id' in credentials_data and 'client_secret' in credentials_data:
+                    # Direct format (less common)
+                    valid_credential = True
+                
+                if not valid_credential:
+                    await update.message.reply_text(
+                        "❌ This doesn't appear to be a valid Google API credentials file. "
+                        "Please make sure you downloaded the correct credentials.json file."
+                    )
+                    return
+                
+                # Save credentials to state (we'll save to file later)
+                state["gmail_credentials"] = credentials_data
+                state["step"] = "gmail_sender_filter"
+                
+                await update.message.reply_text(
+                    "✅ **Gmail credentials uploaded successfully!**\n\n"
+                    "📮 **Sender Filter (Optional)**\n\n"
+                    "Enter email addresses or domains to monitor (comma-separated).\n"
+                    "Only newsletters from these senders will be processed.\n\n"
+                    "Examples:\n"
+                    "• `newsletter@techcrunch.com, @substack.com`\n"
+                    "• `updates@morning-brew.com`\n\n"
+                    "Or type 'skip' to monitor all senders:",
+                    parse_mode='Markdown'
+                )
+                
+            except json.JSONDecodeError:
+                await update.message.reply_text(
+                    "❌ Invalid JSON file. Please upload a valid credentials.json file."
+                )
+            except Exception as e:
+                logger.error(f"Error processing Gmail credentials: {e}")
+                await update.message.reply_text(
+                    "❌ Error processing the credentials file. Please try again."
+                )
+        else:
+            await update.message.reply_text(
+                "I'm not expecting a document right now. Please follow the setup flow."
+            )

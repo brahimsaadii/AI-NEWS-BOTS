@@ -130,10 +130,25 @@ dmypy.json
 
 # Project specific
 botfather/bot_registry.yaml
-*.yaml
-*.yml
 logs/
 *.log
+
+# Credentials and sensitive files
+credentials/
+*credentials*.json
+*token*.txt
+*secret*.txt
+.env.local
+
+# Test files (temporary)
+test_*.py
+diagnose_*.py
+
+# Documentation files (temporary)
+*_RESOLVED.md
+*_RESOLUTION_*.md
+*_IMPLEMENTATION*.md
+*_SETUP.md
 
 # IDE
 .vscode/
