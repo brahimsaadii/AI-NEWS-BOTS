@@ -193,8 +193,7 @@ Let's get started with /addbot!
                     [InlineKeyboardButton("💰 Cryptocurrency", callback_data="niche_crypto")],
                     [InlineKeyboardButton("🤖 Artificial Intelligence", callback_data="niche_ai")],
                     [InlineKeyboardButton("📰 General News", callback_data="niche_general")],
-                    [InlineKeyboardButton("✏️ Custom Niche", callback_data="niche_custom")]
-                ]
+                    [InlineKeyboardButton("✏️ Custom Niche", callback_data="niche_custom")]                ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 await update.message.reply_text(
@@ -232,11 +231,17 @@ Let's get started with /addbot!
             state["step"] = "x_access_token"
             await update.message.reply_text("Please enter your X Access Token:")
         
+        elif state["step"] == "x_access_token":
+            state["x_credentials"]["access_token"] = text.strip()
+            state["step"] = "x_access_token_secret"
+            await update.message.reply_text("Please enter your X Access Token Secret:")
+        
         elif state["step"] == "x_access_token_secret":
             state["x_credentials"]["access_token_secret"] = text.strip()
             state["step"] = "auto_post"
             await self._ask_auto_post(update)
-          # Gmail-specific steps
+        
+        # Gmail-specific steps
         elif state["step"] == "gmail_sender_filter":
             state["gmail_sender_filter"] = text.strip()
             state["step"] = "gmail_keyword_filter"
