@@ -53,13 +53,12 @@ class TextGenerator:
                     max_tokens=400,
                     temperature=0.7,
                     n=1
-                )
-            )
+                )            )
             
             # Extract tweets from response
             content = response.choices[0].message.content.strip()
             tweets = self._parse_tweets_from_response(content)
-              # Validate tweet lengths
+            # Validate tweet lengths
             valid_tweets = [tweet for tweet in tweets if len(tweet) <= 280]
             
             logger.info(f"Generated {len(valid_tweets)} valid tweets using OpenAI")
@@ -71,41 +70,57 @@ class TextGenerator:
     def _create_prompt(self, headline: str, summary: str, link: str) -> str:
         """Create prompt for OpenAI API."""
         prompt = f"""
-Create 3 engaging Twitter/X posts that discuss and analyze this news story. Each tweet should be:
-- Between 200-270 characters (informative but not too long)
-- Focus on the IMPLICATIONS and WHY this matters, not just what happened
-- Discuss the content, provide insights, analysis, or thought-provoking questions
-- Include relevant emojis and 2-3 strategic hashtags
-- Be conversational and engaging, like an expert sharing insights
-- Suitable for a tech-savvy audience interested in thoughtful discussion
-- Each tweet should stand alone as valuable content, even without the link
-- End with the article link only if there's space
+You are an expert analyst who deeply understands technology and business trends. Read this article content carefully and create 3 insightful tweets that show you truly comprehend the story's significance.
 
-News Headline: {headline}
-
+ARTICLE TO ANALYZE:
+Headline: {headline}
 """
         
         if summary:
-            prompt += f"Article Summary: {summary}\n\n"
+            prompt += f"\nFull Article Content: {summary}\n"
         
-        if link:
-            prompt += f"Source Link: {link}\n\n"
-        
-        prompt += """
-Make each tweet approach the story differently:
-- Tweet 1: Analyze the key implications or what this means for the industry
-- Tweet 2: Share an insight about trends, causes, or broader context
-- Tweet 3: Ask a thought-provoking question or predict future impacts
+        prompt += f"""
 
-Focus on VALUE - what can readers learn or think about from your take on this story?
-Include the link at the end only if character count allows.
+INSTRUCTIONS:
+Analyze the ENTIRE article content above. Don't just copy the first few sentences. Instead:
 
-Format your response as:
-1. [First tweet with analysis/implications]
-2. [Second tweet with insights/context]  
-3. [Third tweet with question/future impact]
+1. UNDERSTAND the core story, key players, context, and implications
+2. IDENTIFY what makes this significant in the broader industry landscape  
+3. EXTRACT unique insights that show deep understanding of the topic
+4. CREATE commentary that demonstrates you've read and analyzed the full content
 
-Each tweet should read like expert commentary, not just news sharing.
+Generate 3 tweets (max 270 chars each) that show expert-level analysis:
+
+TWEET 1: Key insight/implication 
+- Analyze what this development really means
+- Show understanding of broader context
+- Include strategic implications or significance
+- Use relevant emoji and 2-3 hashtags
+
+TWEET 2: Industry perspective/trend analysis
+- Connect this story to bigger industry trends
+- Show how this fits into larger patterns
+- Demonstrate expertise in the field
+- Use relevant emoji and 2-3 hashtags
+
+TWEET 3: Forward-looking analysis/discussion
+- Predict implications or ask strategic questions
+- Show understanding of future impact
+- Engage audience with thoughtful perspective
+- Use relevant emoji and 2-3 hashtags
+
+Each tweet should read like it's from someone who:
+- Actually read and understood the full article
+- Has deep industry knowledge
+- Can connect dots others might miss
+- Provides genuine value and insight
+
+DO NOT just copy the article's opening sentences. DO show real understanding and analysis.
+
+Format as:
+1. [Your analytical tweet about key insights]
+2. [Your expert perspective on industry implications] 
+3. [Your forward-looking analysis or strategic question]
 """
         
         return prompt
@@ -156,14 +171,14 @@ Each tweet should read like expert commentary, not just news sharing.
             # Template 2: Insight/Context format
             impact_analysis = self._generate_impact_analysis(clean_headline)
             tweet2 = f"💡 {impact_analysis}\n\nKey takeaway from: {clean_headline[:80]}...\n\n{hashtag_string}"
-            
-            # Add link only if there's space
+              # Add link only if there's space
             if len(tweet2) <= 250 and link:
                 tweet2 += f"\n\n{link}"
                 
             if len(tweet2) <= 280:
                 tweets.append(tweet2)
-              # Template 3: Question/Discussion format
+            
+            # Template 3: Question/Discussion format
             question = self._generate_discussion_question(clean_headline)
             tweet3 = f"🤔 {question}\n\nTriggered by: {clean_headline[:70]}...\n\nWhat's your take? 👇\n\n{hashtag_string}"
             
@@ -182,51 +197,55 @@ Each tweet should read like expert commentary, not just news sharing.
             return []
     
     def _generate_fallback_tweets_with_summary(self, headline: str, summary: str, link: str) -> List[str]:
-        """Generate tweets using template-based method with summary."""
+        """Generate tweets using intelligent content analysis."""
         try:
             # Clean headline and summary
             clean_headline = headline.strip()
             clean_summary = summary.strip() if summary else ""
-              # Generate hashtags based on headline content
+            
+            # Generate hashtags based on headline content
             hashtags = self._generate_hashtags(clean_headline)
             hashtag_string = " ".join(hashtags)
             
             tweets = []
-            link_text = f"\n\nRead more: {link}" if link else ""
             
-            # Use summary for more informative tweets if available
-            if clean_summary and len(clean_summary) > 20:
-                # Template 1: Summary-based informative tweet
-                summary_excerpt = clean_summary[:120] + "..." if len(clean_summary) > 120 else clean_summary
-                tweet1 = f"📈 Breaking: {clean_headline[:50]}...\n\n{summary_excerpt}\n\n{hashtag_string}{link_text}"
+            # Use intelligent content analysis if we have a summary
+            if clean_summary and len(clean_summary) > 50:
+                analysis = self._analyze_article_content(clean_headline, clean_summary)
                 
-                if len(tweet1) <= 280:
-                    tweets.append(tweet1)
+                # Template 1: Industry Impact Analysis
+                if analysis.get('impact'):
+                    tweet1 = f"🎯 Industry Impact Alert:\n\n{analysis['impact']}\n\nThis shift in {analysis.get('sector', 'tech')} could redefine competitive landscapes.\n\n{hashtag_string}"
+                    if len(tweet1) <= 250 and link:
+                        tweet1 += f"\n\n{link}"
+                    if len(tweet1) <= 280:
+                        tweets.append(tweet1)
                 
-                # Template 2: Key takeaway format with more context
-                key_points = clean_summary[:130] + "..." if len(clean_summary) > 130 else clean_summary
-                tweet2 = f"💡 {key_points}\n\n{hashtag_string}{link_text}"
+                # Template 2: Strategic Insights
+                if analysis.get('insight'):
+                    tweet2 = f"💡 Strategic Perspective:\n\n{analysis['insight']}\n\nThe timing suggests this is more than just market positioning.\n\n{hashtag_string}"
+                    if len(tweet2) <= 250 and link:
+                        tweet2 += f"\n\n{link}"
+                    if len(tweet2) <= 280:
+                        tweets.append(tweet2)
                 
-                if len(tweet2) <= 280:
-                    tweets.append(tweet2)
-                
-                # Template 3: Discussion starter with context
-                question = self._generate_discussion_question(clean_headline)
-                context = clean_summary[:100] + "..." if len(clean_summary) > 100 else clean_summary
-                tweet3 = f"🤔 {question}\n\n{context}\n\n{hashtag_string}{link_text}"
-                
-                if len(tweet3) <= 280:
-                    tweets.append(tweet3)
+                # Template 3: Future Implications
+                if analysis.get('future_question'):
+                    tweet3 = f"🔮 Looking Ahead:\n\n{analysis['future_question']}\n\nThis development opens fascinating questions about where the industry is heading.\n\n{hashtag_string}"
+                    if len(tweet3) <= 250 and link:
+                        tweet3 += f"\n\n{link}"
+                    if len(tweet3) <= 280:
+                        tweets.append(tweet3)
             
-            # If no good summary or tweets weren't generated, use original method
+            # If no good analysis or tweets weren't generated, use enhanced fallback
             if not tweets:
                 return self._generate_fallback_tweets(headline, link)
             
-            logger.info(f"Generated {len(tweets)} informative tweets using summary content")
+            logger.info(f"Generated {len(tweets)} analytically-driven tweets from content analysis")
             return tweets
         
         except Exception as e:
-            logger.error(f"Error generating summary-based tweets: {e}")
+            logger.error(f"Error generating analysis-based tweets: {e}")
             # Fallback to original method
             return self._generate_fallback_tweets(headline, link)
 
@@ -712,3 +731,84 @@ Generate just the tweet text, no explanations."""
         
         # Remove duplicates while preserving order
         return list(dict.fromkeys(hashtags))
+    
+    def _analyze_article_content(self, headline: str, summary: str) -> dict:
+        """Analyze article content to extract genuine insights and implications."""
+        try:
+            headline_lower = headline.lower()
+            summary_lower = summary.lower()
+            combined_text = f"{headline} {summary}".lower()
+            
+            analysis = {}
+            
+            # Extract industry impact
+            if any(word in combined_text for word in ['ai', 'artificial intelligence', 'machine learning']):
+                if 'breakthrough' in combined_text or 'advance' in combined_text:
+                    analysis['impact'] = "AI capabilities are advancing faster than regulatory frameworks can adapt."
+                elif 'partnership' in combined_text or 'collaboration' in combined_text:
+                    analysis['impact'] = "Strategic AI partnerships signal a shift toward ecosystem-based innovation."
+                elif 'investment' in combined_text or 'funding' in combined_text:
+                    analysis['impact'] = "AI investment patterns reveal where the market sees transformative potential."
+                else:
+                    analysis['impact'] = "AI developments like this reshape competitive advantages across industries."
+                analysis['sector'] = 'AI'
+                
+            elif any(word in combined_text for word in ['crypto', 'blockchain', 'bitcoin', 'ethereum']):
+                if 'regulation' in combined_text:
+                    analysis['impact'] = "Crypto regulation creates clarity but may also limit innovation vectors."
+                elif 'adoption' in combined_text or 'mainstream' in combined_text:
+                    analysis['impact'] = "Mainstream crypto adoption signals institutional confidence in digital assets."
+                else:
+                    analysis['impact'] = "Blockchain innovations continue pushing the boundaries of decentralized systems."
+                analysis['sector'] = 'crypto'
+                
+            elif any(word in combined_text for word in ['startup', 'funding', 'investment', 'venture']):
+                if 'series' in combined_text or 'round' in combined_text:
+                    analysis['impact'] = "Venture funding flows reveal investor conviction in emerging market segments."
+                else:
+                    analysis['impact'] = "Startup ecosystem dynamics show where innovation capital is concentrating."
+                analysis['sector'] = 'venture capital'
+                
+            elif any(word in combined_text for word in ['google', 'microsoft', 'apple', 'meta', 'amazon']):
+                analysis['impact'] = "Big Tech moves create ripple effects throughout the entire technology ecosystem."
+                analysis['sector'] = 'big tech'
+                
+            else:
+                # Generic tech analysis
+                analysis['impact'] = "Technology shifts like this often have broader implications than initially apparent."
+                analysis['sector'] = 'technology'
+            
+            # Extract strategic insights
+            if 'partnership' in combined_text or 'collaboration' in combined_text:
+                analysis['insight'] = "Strategic alliances often signal market convergence points that single players can't capture alone."
+            elif 'acquisition' in combined_text or 'merger' in combined_text:
+                analysis['insight'] = "M&A activity reveals which capabilities companies view as existential for future competitiveness."
+            elif 'launch' in combined_text or 'release' in combined_text:
+                analysis['insight'] = "Product timing suggests this addresses a market gap that competitors haven't yet filled."
+            elif 'research' in combined_text or 'study' in combined_text:
+                analysis['insight'] = "Research findings today become tomorrow's competitive advantages for early adopters."
+            elif 'regulation' in combined_text or 'policy' in combined_text:
+                analysis['insight'] = "Regulatory developments reshape the playing field, often favoring established players over disruptors."
+            else:
+                analysis['insight'] = "Market movements like this often reflect deeper shifts in consumer behavior and enterprise needs."
+            
+            # Generate forward-looking questions
+            if analysis['sector'] == 'AI':
+                analysis['future_question'] = "Will this AI advancement democratize capabilities or concentrate them further among tech giants?"
+            elif analysis['sector'] == 'crypto':
+                analysis['future_question'] = "How will traditional financial institutions respond to this crypto development?"
+            elif analysis['sector'] == 'venture capital':
+                analysis['future_question'] = "What does this funding pattern tell us about which technologies will dominate in 2-3 years?"
+            else:
+                analysis['future_question'] = "What second-order effects might this development trigger across adjacent industries?"
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error analyzing article content: {e}")
+            return {
+                'impact': "This development signals significant changes in the technology landscape.",
+                'insight': "Market dynamics suggest this is more than just another product announcement.",
+                'future_question': "How will this reshape competitive dynamics in the coming months?",
+                'sector': 'technology'
+            }
