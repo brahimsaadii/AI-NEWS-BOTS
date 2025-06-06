@@ -59,13 +59,11 @@ class TextGenerator:
             # Extract tweets from response
             content = response.choices[0].message.content.strip()
             tweets = self._parse_tweets_from_response(content)
-            
-            # Validate tweet lengths
+              # Validate tweet lengths
             valid_tweets = [tweet for tweet in tweets if len(tweet) <= 280]
             
             logger.info(f"Generated {len(valid_tweets)} valid tweets using OpenAI")
             return valid_tweets[:3]  # Return max 3 tweets
-        
         except Exception as e:
             logger.error(f"Error generating tweets with OpenAI: {e}")
             return []
@@ -73,38 +71,41 @@ class TextGenerator:
     def _create_prompt(self, headline: str, summary: str, link: str) -> str:
         """Create prompt for OpenAI API."""
         prompt = f"""
-Create 3 engaging Twitter/X posts based on this news article. Each tweet should be:
+Create 3 engaging Twitter/X posts that discuss and analyze this news story. Each tweet should be:
 - Between 200-270 characters (informative but not too long)
-- Include a meaningful summary of the key points, not just the headline
-- Explain WHY this news matters or what the impact is
+- Focus on the IMPLICATIONS and WHY this matters, not just what happened
+- Discuss the content, provide insights, analysis, or thought-provoking questions
 - Include relevant emojis and 2-3 strategic hashtags
-- Have a hook to grab attention in the first line
-- Be suitable for a tech-savvy audience
-- End with "Read more:" followed by the article link
-- Make each tweet self-contained and informative
+- Be conversational and engaging, like an expert sharing insights
+- Suitable for a tech-savvy audience interested in thoughtful discussion
+- Each tweet should stand alone as valuable content, even without the link
+- End with the article link only if there's space
 
 News Headline: {headline}
 
 """
         
         if summary:
-            prompt += f"Summary: {summary}\n\n"
+            prompt += f"Article Summary: {summary}\n\n"
         
         if link:
-            prompt += f"Article Link: {link}\n\n"
+            prompt += f"Source Link: {link}\n\n"
         
         prompt += """
+Make each tweet approach the story differently:
+- Tweet 1: Analyze the key implications or what this means for the industry
+- Tweet 2: Share an insight about trends, causes, or broader context
+- Tweet 3: Ask a thought-provoking question or predict future impacts
+
+Focus on VALUE - what can readers learn or think about from your take on this story?
+Include the link at the end only if character count allows.
+
 Format your response as:
-1. [First tweet with summary and "Read more: {link}"]
-2. [Second tweet with different angle and "Read more: {link}"]
-3. [Third tweet with impact/analysis and "Read more: {link}"]
+1. [First tweet with analysis/implications]
+2. [Second tweet with insights/context]  
+3. [Third tweet with question/future impact]
 
-Make each tweet unique in approach:
-- Tweet 1: Summarize the key facts
-- Tweet 2: Focus on implications or impact
-- Tweet 3: Ask a thought-provoking question or call-to-action
-
-Include strategic hashtags and ensure each tweet tells a complete story.
+Each tweet should read like expert commentary, not just news sharing.
 """
         
         return prompt
@@ -115,7 +116,8 @@ Include strategic hashtags and ensure each tweet tells a complete story.
         lines = content.split('\n')
         
         for line in lines:
-            line = line.strip()            # Look for numbered lines
+            line = line.strip()
+            # Look for numbered lines
             if line and (line.startswith('1.') or line.startswith('2.') or line.startswith('3.')):
                 tweet = line[2:].strip()  # Remove number prefix
                 if tweet:
@@ -138,33 +140,41 @@ Include strategic hashtags and ensure each tweet tells a complete story.
             
             tweets = []
             
-            # Template 1: News summary format
-            link_text = f"\n\nRead more: {link}" if link else ""
-            
-            # Create a more detailed first tweet
+            # Template 1: Analysis/Implication format (no "Read more")
             if summary_points:
-                tweet1 = f"🔥 {summary_points['main_point']}\n\n{summary_points['details']}\n\n{hashtag_string}{link_text}"
+                tweet1 = f"🔥 {summary_points['main_point']}\n\n{summary_points['details']}\n\nThis could reshape how the industry approaches innovation.\n\n{hashtag_string}"
             else:
-                tweet1 = f"🔥 Breaking: {clean_headline[:120]}...\n\nThis could impact how we think about technology and innovation.\n\n{hashtag_string}{link_text}"
+                tweet1 = f"🔥 Major development: {clean_headline[:100]}...\n\nThis signals a significant shift in the tech landscape.\n\n{hashtag_string}"
+            
+            # Add link only if there's space
+            if len(tweet1) <= 250 and link:
+                tweet1 += f"\n\n{link}"
             
             if len(tweet1) <= 280:
                 tweets.append(tweet1)
             
-            # Template 2: Impact/Analysis format
+            # Template 2: Insight/Context format
             impact_analysis = self._generate_impact_analysis(clean_headline)
-            tweet2 = f"💡 Key insight: {impact_analysis}\n\n{clean_headline[:100]}...\n\n{hashtag_string}{link_text}"
+            tweet2 = f"💡 {impact_analysis}\n\nKey takeaway from: {clean_headline[:80]}...\n\n{hashtag_string}"
             
+            # Add link only if there's space
+            if len(tweet2) <= 250 and link:
+                tweet2 += f"\n\n{link}"
+                
             if len(tweet2) <= 280:
                 tweets.append(tweet2)
-            
-            # Template 3: Question/Discussion format
+              # Template 3: Question/Discussion format
             question = self._generate_discussion_question(clean_headline)
-            tweet3 = f"🤔 {question}\n\n{clean_headline[:120]}...\n\nWhat's your take? 👇\n\n{hashtag_string}{link_text}"
+            tweet3 = f"🤔 {question}\n\nTriggered by: {clean_headline[:70]}...\n\nWhat's your take? 👇\n\n{hashtag_string}"
+            
+            # Add link only if there's space
+            if len(tweet3) <= 250 and link:
+                tweet3 += f"\n\n{link}"
             
             if len(tweet3) <= 280:
                 tweets.append(tweet3)
             
-            logger.info(f"Generated {len(tweets)} informative fallback tweets with summaries")
+            logger.info(f"Generated {len(tweets)} discussion-focused fallback tweets")
             return tweets
         
         except Exception as e:
@@ -177,14 +187,14 @@ Include strategic hashtags and ensure each tweet tells a complete story.
             # Clean headline and summary
             clean_headline = headline.strip()
             clean_summary = summary.strip() if summary else ""
-            
-            # Generate hashtags based on headline content
+              # Generate hashtags based on headline content
             hashtags = self._generate_hashtags(clean_headline)
             hashtag_string = " ".join(hashtags)
             
             tweets = []
             link_text = f"\n\nRead more: {link}" if link else ""
-              # Use summary for more informative tweets if available
+            
+            # Use summary for more informative tweets if available
             if clean_summary and len(clean_summary) > 20:
                 # Template 1: Summary-based informative tweet
                 summary_excerpt = clean_summary[:120] + "..." if len(clean_summary) > 120 else clean_summary
