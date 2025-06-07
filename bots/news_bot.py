@@ -103,14 +103,27 @@ I'll start sending you news updates automatically!
 • **Status:** 🟢 Active
 • **Next update:** {next_run}
 • **Articles sent:** {len(self.sent_articles)}
-• **Auto-post:** {'Yes ✅' if self.config['auto_post'] else 'No 👤'}
-        """
+• **Auto-post:** {'Yes ✅' if self.config['auto_post'] else 'No 👤'}        """
         await update.message.reply_text(status_text, parse_mode='Markdown')
     
     async def latest_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Manually fetch and send latest news."""
-        await update.message.reply_text("🔍 Fetching latest news...")
-        await self.fetch_and_send_news()
+        status_message = await update.message.reply_text("🔍 Fetching latest news...")
+        
+        result = await self.fetch_and_send_news()
+        
+        # Provide feedback based on the result
+        if result == "no_articles":
+            await status_message.edit_text("📭 No new articles found in the RSS feeds. This might be because:\n\n• All recent articles have already been processed\n• RSS feeds haven't updated recently\n• There might be connectivity issues\n\nTry again later or check your RSS sources.")
+        elif result == "no_new_articles":
+            await status_message.edit_text("✅ All recent articles have already been processed. No new content to review.\n\nThe bot is working correctly - just no new articles since the last check.")
+        elif result == "success":
+            await status_message.edit_text("✅ Latest news fetched successfully! Check the messages above for tweet suggestions.")
+        elif result == "error":
+            await status_message.edit_text("❌ Error occurred while fetching news. Please try again later or check the bot logs.")
+        else:
+            # Fallback for any other case
+            await status_message.edit_text("🔍 News fetch completed. Check above for any new articles.")
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command."""
@@ -203,8 +216,7 @@ I'll start sending you news updates automatically!
                             f"✅ **Tweet simulated (no X token provided)**\n\n📱 Tweet: {tweet_text}",
                             parse_mode='Markdown'
                         )
-                    
-                    # Clean up
+                      # Clean up
                     del self.pending_tweets[user_id]
                 else:
                     await query.edit_message_text("❌ Invalid tweet selection.")
@@ -222,7 +234,7 @@ I'll start sending you news updates automatically!
             
             if not articles:
                 logger.info("No new articles found")
-                return
+                return "no_articles"
             
             # Filter out already sent articles
             new_articles = [
@@ -232,27 +244,41 @@ I'll start sending you news updates automatically!
             
             if not new_articles:
                 logger.info("No new articles to process")
-                return
-            
-            # Process up to 3 articles per batch
+                return "no_new_articles"
+              # Process up to 3 articles per batch
+            articles_processed = 0
             for article in new_articles[:3]:
-                await self._process_article(article)
-                self.sent_articles.add(article.get('link'))
-                  # Small delay between articles
-                await asyncio.sleep(2)
+                try:
+                    await self._process_article(article)
+                    self.sent_articles.add(article.get('link'))
+                    articles_processed += 1
+                    # Small delay between articles
+                    await asyncio.sleep(2)
+                except Exception as e:
+                    logger.error(f"Error processing article {article.get('title', 'Unknown')}: {e}")
+                    continue
+            
+            if articles_processed > 0:
+                logger.info(f"Successfully processed {articles_processed} articles")
+                return "success"
+            else:
+                logger.warning("Failed to process any articles")
+                return "error"
         
         except Exception as e:
             logger.error(f"Error fetching news: {e}")
+            return "error"
     
     async def _process_article(self, article: Dict[str, Any]):
         """Process a single article and send tweet suggestions."""
         try:
             headline = article.get('title', '')
             link = article.get('link', '')
-            summary = article.get('summary', '')
+            # Use full content if available, fallback to summary
+            content = article.get('content', '') or article.get('summary', '')
             
-            # Generate tweet suggestions with link for optimization
-            tweets = await self.text_generator.generate_tweets(headline, summary, link)
+            # Generate tweet suggestions with full content for better analysis
+            tweets = await self.text_generator.generate_tweets(headline, content, link)
             
             if not tweets:
                 logger.warning(f"No tweets generated for article: {headline}")
