@@ -47,11 +47,12 @@ class NewsBot:
             access_token=x_creds.get('access_token'),
             access_token_secret=x_creds.get('access_token_secret')
         )
-        
-        # Setup scheduler
+          # Setup scheduler
         self.scheduler = AsyncIOScheduler()
-          # Track sent articles to avoid duplicates
+        
+        # Track sent articles to avoid duplicates (with periodic cleanup)
         self.sent_articles = set()
+        self.last_cleanup_time = datetime.now()
         
         # Setup handlers
         self._setup_handlers()

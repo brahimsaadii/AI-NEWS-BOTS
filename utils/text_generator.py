@@ -37,8 +37,7 @@ class TextGenerator:
             tweets = await self._generate_with_openai(headline, full_content, link)
             if tweets:
                 return tweets
-        
-        # If no OpenAI key, return empty
+          # If no OpenAI key, return empty
         logger.warning("No OpenAI API key provided. Cannot generate tweets without API key.")
         return []
     
@@ -48,20 +47,22 @@ class TextGenerator:
             # Create simple prompt that gives full article to ChatGPT
             prompt = self._create_simple_prompt(headline, full_content, link)
             
-            # Make API call using new client
-            response = await asyncio.get_event_loop().run_in_executor(
-                None, 
-                lambda: self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a social media expert who creates engaging tweets from news articles."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=400,
-                    temperature=0.7
-                )
-            )
-            
+            # Make API call using new client with timeout handling
+            response = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    lambda: self.client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": "You are a social media expert who creates engaging tweets from news articles."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        max_tokens=400,
+                        temperature=0.7
+                    )
+                ),
+                timeout=30.0  # 30 second timeout for OpenAI API
+            )            
             # Extract tweets from response
             content = response.choices[0].message.content.strip()
             tweets = self._parse_tweets_from_response(content)
@@ -71,6 +72,10 @@ class TextGenerator:
             
             logger.info(f"Generated {len(valid_tweets)} valid tweets using OpenAI")
             return valid_tweets[:3]  # Return max 3 tweets
+            
+        except asyncio.TimeoutError:
+            logger.error("OpenAI API call timed out (30s)")
+            return []
         except Exception as e:
             logger.error(f"Error generating tweets with OpenAI: {e}")
             return []

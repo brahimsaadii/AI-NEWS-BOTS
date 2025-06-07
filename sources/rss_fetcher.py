@@ -93,11 +93,20 @@ class RSSFetcher:
     async def _fetch_from_source(self, source_url: str, cutoff_time: datetime) -> List[Dict[str, Any]]:
         """Fetch articles from a single RSS source."""
         try:
-            # Use requests to fetch feed with timeout
-            response = requests.get(source_url, timeout=10, headers={
-                'User-Agent': 'News Tweet Bot/1.0'
-            })
-            response.raise_for_status()
+            # Use requests to fetch feed with timeout and retries
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(source_url, timeout=8, headers={
+                        'User-Agent': 'News Tweet Bot/1.0'
+                    })
+                    response.raise_for_status()
+                    break
+                except (requests.Timeout, requests.ConnectionError) as e:
+                    if attempt == max_retries - 1:
+                        raise e
+                    logger.warning(f"Retry {attempt + 1} for {source_url}: {e}")
+                    await asyncio.sleep(1)  # Brief pause before retry
             
             # Parse feed
             feed = feedparser.parse(response.content)
@@ -127,14 +136,23 @@ class RSSFetcher:
                     'source': feed.feed.get('title', source_url),
                     'source_url': source_url
                 }
-                
-                # Fetch full article content
-                full_content = await self._fetch_full_article_content(article['link'])
-                if full_content:
-                    article['content'] = full_content
-                    logger.debug(f"Fetched full content for: {article['title'][:50]}...")
-                else:
-                    # Fallback to summary if content fetch fails
+                  # Fetch full article content with timeout
+                try:
+                    full_content = await asyncio.wait_for(
+                        self._fetch_full_article_content(article['link']),
+                        timeout=10.0  # Reduced timeout for content fetching
+                    )
+                    if full_content:
+                        article['content'] = full_content
+                        logger.debug(f"Fetched full content for: {article['title'][:50]}...")
+                    else:
+                        # Fallback to summary if content fetch fails
+                        article['content'] = article['summary']
+                except asyncio.TimeoutError:
+                    logger.warning(f"Content fetch timeout for: {article['title'][:50]}")
+                    article['content'] = article['summary']
+                except Exception as e:
+                    logger.warning(f"Content fetch error for {article['title'][:50]}: {e}")
                     article['content'] = article['summary']
                 
                 # Only add if title exists
@@ -193,9 +211,8 @@ class RSSFetcher:
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1',
             }
-            
-            # Fetch the article page
-            response = requests.get(article_url, headers=headers, timeout=15)
+              # Fetch the article page with reduced timeout
+            response = requests.get(article_url, headers=headers, timeout=8)
             response.raise_for_status()
             
             # Parse HTML content
